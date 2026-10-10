@@ -21,6 +21,23 @@
       background: #ffffff18;
       border: 1px solid #ffffff40;
     }
+    #my-luv {
+  font: 1rem monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  border-right: 3px solid #000;
+  width: 97%;
+  animation: typing 3s steps(18), blink .7s infinite step-end alternate;
+}
+
+@keyframes typing {
+  from { width: 0; }
+}
+
+@keyframes blink {
+  50% { border-color: transparent; }
+}
+
     input, button {
       box-sizing: border-box;
       width: 100%;
@@ -65,7 +82,7 @@
     </section>
      
     <section id="controls" hidden>
-       <hr><b style="color : red ">khaadoooooooos, oiiiiiiiiiiiiiiiiiiiiii, <br> tumko pata hai mereko <br> tumsae kuchu muchu hai😁</b><hr>
+       <div id="my-luv" style="background-color: #131111;text-align: center;"><hr><b style="color : rgb(242, 237, 237) ;">khaadoooooooos, oiiiiiiiiiiiiiiiiiiiiii, <br> tumko pata hai mereko <br> tumsae kuchu muchu hai😁</b><hr></div>
       <!-- Socket 1 -->
       <div class="socket">
         <div class="socket-header">
