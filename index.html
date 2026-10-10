@@ -15,7 +15,7 @@
       margin: 0;
     }
     .card {
-      width: min(360px, 85vw);
+      width: min(380px, 85vw);
       padding: 24px;
       border-radius: 18px;
       background: #ffffff18;
@@ -42,8 +42,15 @@
     .badge.on { background: #4cc9f0; color: #000; box-shadow: 0 0 8px #4cc9f088; }
     .badge.off { background: #444; color: #aaa; }
     
-    .timer-text { font-size: 0.9em; color: #caf0f8; margin-top: 6px; }
+    .timer-text { font-size: 0.9em; color: #caf0f8; margin-top: 6px; font-weight: bold; }
     #status { overflow-wrap: anywhere; margin-bottom: 12px; font-size: 0.9em; }
+
+    /* New Timer UI Styles */
+    .timer-controls { background: #00000033; padding: 14px; border-radius: 10px; margin-top: 12px; }
+    .timer-controls label { font-size: 14px; color: #caf0f8; }
+    .timer-controls input[type="time"] { width: auto; display: inline-block; padding: 8px; background: #fff; color: #000; margin-left: 8px; }
+    .btn-row { display: flex; gap: 10px; margin-top: 10px; }
+    .cancel-btn { background: #ff4d4d; color: white; }
   </style>
 </head>
 <body>
@@ -58,6 +65,7 @@
     </section>
 
     <section id="controls" hidden>
+      <!-- Socket 1 -->
       <div class="socket">
         <div class="socket-header">
           <b>S1 — Ola Charger</b>
@@ -65,8 +73,17 @@
         </div>
         <button id="s1Btn" disabled>Loading…</button>
         <div id="timer_s1" class="timer-text">No active timer.</div>
+        
+        <div class="timer-controls">
+          <label>Turn OFF at: <input id="time_s1" type="time"></label>
+          <div class="btn-row">
+            <button id="setS1TimerBtn">Set Timer</button>
+            <button id="cancelS1TimerBtn" class="cancel-btn">Cancel</button>
+          </div>
+        </div>
       </div>
       
+      <!-- Socket 2 -->
       <div class="socket">
         <div class="socket-header">
           <b>S2 — Socket 2</b>
@@ -74,6 +91,14 @@
         </div>
         <button id="s2Btn" disabled>Loading…</button>
         <div id="timer_s2" class="timer-text">No active timer.</div>
+        
+        <div class="timer-controls">
+          <label>Turn OFF at: <input id="time_s2" type="time"></label>
+          <div class="btn-row">
+            <button id="setS2TimerBtn">Set Timer</button>
+            <button id="cancelS2TimerBtn" class="cancel-btn">Cancel</button>
+          </div>
+        </div>
       </div>
       
       <button id="logoutBtn" style="margin-top: 24px; background: #ff4d4d; color: white;">Sign out</button>
@@ -81,15 +106,9 @@
   </main>
 
   <script type="module">
-    import { initializeApp } from
-      "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
-    import {
-      getAuth, signInWithEmailAndPassword, signOut,
-      onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
-    import {
-      getDatabase, ref, set, onValue
-    } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyD_KDCSkQ0A0yyJZfneikhHtqo35NNymDI",
@@ -111,7 +130,6 @@
     const controls = document.getElementById("controls");
     const loginBtn = document.getElementById("loginBtn");
     
-    // UI Elements
     const s1Btn = document.getElementById("s1Btn");
     const s2Btn = document.getElementById("s2Btn");
     const badgeS1 = document.getElementById("badge_s1");
@@ -128,11 +146,7 @@
     loginBtn.onclick = async () => {
       loginBtn.disabled = true;
       try {
-        await signInWithEmailAndPassword(
-          auth,
-          document.getElementById("email").value.trim(),
-          document.getElementById("password").value
-        );
+        await signInWithEmailAndPassword(auth, document.getElementById("email").value.trim(), document.getElementById("password").value);
       } catch (error) {
         showError(error);
       } finally {
@@ -151,8 +165,7 @@
 
       status.textContent = "Signed in. Monitoring sockets...";
 
-      // The onValue listener drives the UI. It will trigger automatically
-      // when data changes in the cloud OR when we locally call set().
+      // Listen for command changes
       onValue(ref(db, "commands"), snapshot => {
         const data = snapshot.val() || {};
         socketStates.s1 = data.s1 === true;
@@ -160,6 +173,7 @@
         render();
       });
 
+      // Listen for timer updates from the ESP8266
       onValue(ref(db, "timer"), snapshot => {
         const data = snapshot.val() || {};
         timerStates.s1 = data.s1 || { active: false, deadline: 0 };
@@ -168,12 +182,10 @@
     });
 
     function render() {
-      // Update Button Text & Enable them
       s1Btn.textContent = socketStates.s1 ? "Turn OFF" : "Turn ON";
       s2Btn.textContent = socketStates.s2 ? "Turn OFF" : "Turn ON";
       s1Btn.disabled = s2Btn.disabled = false;
 
-      // Update Badges
       badgeS1.textContent = socketStates.s1 ? "ON" : "OFF";
       badgeS1.className = socketStates.s1 ? "badge on" : "badge off";
       
@@ -185,8 +197,6 @@
       button.disabled = true; 
       try {
         const nextState = !socketStates[key];
-        // We push the new state to Firebase. The onValue listener will 
-        // catch this immediately and call render() to fix the UI sync.
         await set(ref(db, "commands/" + key), nextState);
         status.textContent = "Command synced.";
       } catch (error) {
@@ -197,6 +207,48 @@
 
     s1Btn.onclick = () => toggleSocket("s1", s1Btn);
     s2Btn.onclick = () => toggleSocket("s2", s2Btn);
+
+    // --- New Remote Timer Logic ---
+    async function setRemoteTimer(socketKey, inputId) {
+      const timeInput = document.getElementById(inputId).value;
+      if (!timeInput) {
+        status.textContent = 'Please select a time first.';
+        return;
+      }
+      
+      // Calculate minutes until target time
+      const [h, m] = timeInput.split(':');
+      const now = new Date();
+      const target = new Date();
+      target.setHours(parseInt(h), parseInt(m), 0, 0);
+      
+      if (target <= now) target.setDate(target.getDate() + 1); // If past, set for tomorrow
+      const diffMinutes = Math.floor((target - now) / 60000);
+      
+      try {
+        // Send the minutes duration to Firebase so the ESP can read it
+        await set(ref(db, `commands/timer_${socketKey}`), diffMinutes);
+        status.textContent = `Set ${socketKey.toUpperCase()} timer to ${timeInput} sent to device.`;
+      } catch (error) {
+        showError(error);
+      }
+    }
+
+    async function cancelRemoteTimer(socketKey) {
+      try {
+        // Sending 0 minutes tells the ESP to cancel the timer
+        await set(ref(db, `commands/timer_${socketKey}`), 0);
+        status.textContent = `Cancel ${socketKey.toUpperCase()} timer sent to device.`;
+      } catch (error) {
+        showError(error);
+      }
+    }
+
+    document.getElementById("setS1TimerBtn").onclick = () => setRemoteTimer("s1", "time_s1");
+    document.getElementById("cancelS1TimerBtn").onclick = () => cancelRemoteTimer("s1");
+    
+    document.getElementById("setS2TimerBtn").onclick = () => setRemoteTimer("s2", "time_s2");
+    document.getElementById("cancelS2TimerBtn").onclick = () => cancelRemoteTimer("s2");
 
     document.getElementById("logoutBtn").onclick = async () => {
       try { await signOut(auth); } catch (error) { showError(error); }
@@ -210,9 +262,9 @@
       return `${h}h ${m}m ${s}s`;
     }
 
+    // Countdown loop
     setInterval(() => {
       if (login.hidden) return; 
-
       const now = Math.floor(Date.now() / 1000); 
 
       if (timerStates.s1.active && timerStates.s1.deadline > now) {
