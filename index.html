@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -31,10 +30,20 @@
       border-radius: 8px;
       font-size: 16px;
     }
-    button { cursor: pointer; background: #90e0ef; }
+    button { cursor: pointer; background: #90e0ef; color: #000; font-weight: bold; transition: 0.2s; }
+    button:active { transform: scale(0.98); }
     button:disabled { opacity: .5; cursor: not-allowed; }
-    .socket { padding: 12px 0; }
-    #status { overflow-wrap: anywhere; }
+    
+    .socket { padding: 16px 0; border-bottom: 1px solid #ffffff40; }
+    .socket:last-of-type { border-bottom: none; }
+    .socket-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    
+    .badge { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+    .badge.on { background: #4cc9f0; color: #000; box-shadow: 0 0 8px #4cc9f088; }
+    .badge.off { background: #444; color: #aaa; }
+    
+    .timer-text { font-size: 0.9em; color: #caf0f8; margin-top: 6px; }
+    #status { overflow-wrap: anywhere; margin-bottom: 12px; font-size: 0.9em; }
   </style>
 </head>
 <body>
@@ -50,14 +59,24 @@
 
     <section id="controls" hidden>
       <div class="socket">
-        <b>S1 — Ola Charger</b>
+        <div class="socket-header">
+          <b>S1 — Ola Charger</b>
+          <span id="badge_s1" class="badge off">OFF</span>
+        </div>
         <button id="s1Btn" disabled>Loading…</button>
+        <div id="timer_s1" class="timer-text">No active timer.</div>
       </div>
+      
       <div class="socket">
-        <b>S2</b>
+        <div class="socket-header">
+          <b>S2 — Socket 2</b>
+          <span id="badge_s2" class="badge off">OFF</span>
+        </div>
         <button id="s2Btn" disabled>Loading…</button>
+        <div id="timer_s2" class="timer-text">No active timer.</div>
       </div>
-      <button id="logoutBtn">Sign out</button>
+      
+      <button id="logoutBtn" style="margin-top: 24px; background: #ff4d4d; color: white;">Sign out</button>
     </section>
   </main>
 
@@ -69,7 +88,7 @@
       onAuthStateChanged
     } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
     import {
-      getDatabase, ref, get, set
+      getDatabase, ref, set, onValue
     } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-database.js";
 
     const firebaseConfig = {
@@ -91,10 +110,15 @@
     const login = document.getElementById("login");
     const controls = document.getElementById("controls");
     const loginBtn = document.getElementById("loginBtn");
+    
+    // UI Elements
     const s1Btn = document.getElementById("s1Btn");
     const s2Btn = document.getElementById("s2Btn");
+    const badgeS1 = document.getElementById("badge_s1");
+    const badgeS2 = document.getElementById("badge_s2");
 
     let socketStates = { s1: false, s2: false };
+    let timerStates = { s1: { active: false, deadline: 0 }, s2: { active: false, deadline: 0 } };
 
     function showError(error) {
       console.error(error);
@@ -116,7 +140,7 @@
       }
     };
 
-    onAuthStateChanged(auth, async user => {
+    onAuthStateChanged(auth, user => {
       login.hidden = !!user;
       controls.hidden = !user;
 
@@ -125,43 +149,48 @@
         return;
       }
 
-      status.textContent = "Signed in. Loading socket states…";
+      status.textContent = "Signed in. Monitoring sockets...";
 
-      try {
-        const snapshot = await get(ref(db, "commands"));
+      // The onValue listener drives the UI. It will trigger automatically
+      // when data changes in the cloud OR when we locally call set().
+      onValue(ref(db, "commands"), snapshot => {
         const data = snapshot.val() || {};
-
         socketStates.s1 = data.s1 === true;
         socketStates.s2 = data.s2 === true;
-
         render();
-        status.textContent =
-          "Connected to Firebase. Device connectivity is not yet verified.";
-      } catch (error) {
-        showError(error);
-      }
+      });
+
+      onValue(ref(db, "timer"), snapshot => {
+        const data = snapshot.val() || {};
+        timerStates.s1 = data.s1 || { active: false, deadline: 0 };
+        timerStates.s2 = data.s2 || { active: false, deadline: 0 };
+      });
     });
 
     function render() {
+      // Update Button Text & Enable them
       s1Btn.textContent = socketStates.s1 ? "Turn OFF" : "Turn ON";
       s2Btn.textContent = socketStates.s2 ? "Turn OFF" : "Turn ON";
       s1Btn.disabled = s2Btn.disabled = false;
+
+      // Update Badges
+      badgeS1.textContent = socketStates.s1 ? "ON" : "OFF";
+      badgeS1.className = socketStates.s1 ? "badge on" : "badge off";
+      
+      badgeS2.textContent = socketStates.s2 ? "ON" : "OFF";
+      badgeS2.className = socketStates.s2 ? "badge on" : "badge off";
     }
 
     async function toggleSocket(key, button) {
-      button.disabled = true;
+      button.disabled = true; 
       try {
         const nextState = !socketStates[key];
-
+        // We push the new state to Firebase. The onValue listener will 
+        // catch this immediately and call render() to fix the UI sync.
         await set(ref(db, "commands/" + key), nextState);
-
-        socketStates[key] = nextState;
-        render();
-        status.textContent =
-          "Command saved. Waiting for device integration.";
+        status.textContent = "Command synced.";
       } catch (error) {
         showError(error);
-      } finally {
         button.disabled = false;
       }
     }
@@ -170,12 +199,34 @@
     s2Btn.onclick = () => toggleSocket("s2", s2Btn);
 
     document.getElementById("logoutBtn").onclick = async () => {
-      try {
-        await signOut(auth);
-      } catch (error) {
-        showError(error);
-      }
+      try { await signOut(auth); } catch (error) { showError(error); }
     };
+
+    function formatRemaining(seconds) {
+      if (seconds <= 0) return '0s';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      return `${h}h ${m}m ${s}s`;
+    }
+
+    setInterval(() => {
+      if (login.hidden) return; 
+
+      const now = Math.floor(Date.now() / 1000); 
+
+      if (timerStates.s1.active && timerStates.s1.deadline > now) {
+        document.getElementById('timer_s1').textContent = '⏱️ Remaining: ' + formatRemaining(timerStates.s1.deadline - now);
+      } else {
+        document.getElementById('timer_s1').textContent = 'No active timer.';
+      }
+
+      if (timerStates.s2.active && timerStates.s2.deadline > now) {
+        document.getElementById('timer_s2').textContent = '⏱️ Remaining: ' + formatRemaining(timerStates.s2.deadline - now);
+      } else {
+        document.getElementById('timer_s2').textContent = 'No active timer.';
+      }
+    }, 1000);
   </script>
 </body>
 </html>
